@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b7f4b">
+<title>My Shop</title>
+<style>
+:root{--green:#1b7f4b;--bg:#f6f7f6;--card:#fff;--text:#1c1f1d;--muted:#5f6b64;--border:#e1e5e2;--gold:#f2b01e}
+@media(prefers-color-scheme:dark){:root{--bg:#121513;--card:#1c211e;--text:#eef2ef;--muted:#9aa6a0;--border:#2a312d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;line-height:1.4}
+.top{position:sticky;top:0;z-index:10;background:var(--green);color:#fff;padding:12px 16px}
+.top h1{margin:0;font-size:1.25rem}
+.cities{display:flex;gap:8px;padding:12px 16px;overflow-x:auto;position:sticky;top:48px;z-index:9;background:var(--bg)}
+.chip{flex:0 0 auto;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:8px 16px;font-size:.95rem}
+.chip[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+main{padding:4px 16px 24px;max-width:720px;margin:0 auto}
+h2{font-size:1rem;margin:16px 0 8px;color:var(--muted)}
+.list{display:grid;gap:12px}
+.card{display:flex;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.card.sp{border-color:var(--gold)}
+.thumb{width:104px;min-height:104px;flex:0 0 104px;background:var(--border);object-fit:cover;display:grid;place-items:center;font-size:2rem}
+.body{padding:10px 12px 10px 0;min-width:0;flex:1}
+.body h3{margin:0 0 4px;font-size:1rem}
+.price{font-weight:700;color:var(--green);margin:0 0 4px}
+.meta{margin:0;font-size:.85rem;color:var(--muted)}
+.badge{display:inline-block;background:var(--gold);color:#3a2a00;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-bottom:6px}
+.notice{border:1px dashed var(--border);border-radius:14px;padding:10px 12px;font-size:.85rem;color:var(--muted);margin:8px 0}
+.state{text-align:center;padding:40px 12px;color:var(--muted)}
+.btn{border:0;background:var(--green);color:#fff;border-radius:999px;padding:10px 22px;font-size:.95rem}
+.sk{height:104px;border-radius:14px;background:var(--border);opacity:.6}
+</style>
+</head>
+<body>
+<header class="top"><h1>My Shop</h1></header>
+<nav id="cities" class="cities"></nav>
+<main id="content"></main>
+<script>
+var SUPABASE_URL = "https://ssjiafrucivzoaxjcyxr.supabase.co";
+var SUPABASE_KEY = "sb_publishable_MNRSSQFcqbXcr9QdjkPT2Q_vkhZ13Kh";
+var CITIES = [{id:1,name:"N'Djamena"},{id:2,name:"Moundou"},{id:3,name:"Abéché"}];
+var content = document.getElementById("content");
+var nav = document.getElementById("cities");
+var cityId = 1, token = 0;
+try { var s = Number(localStorage.getItem("myshop_city")); if (s >= 1 && s <= 3) cityId = s; } catch (e) {}
+
+function el(tag, cls, text) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function price(n) { return new Intl.NumberFormat("fr-FR").format(n) + " FCFA"; }
+
+async function fetchProducts(id) {
+  var url = SUPABASE_URL + "/rest/v1/products_view?select=*&city_id=eq." + id +
+    "&order=is_sponsored.desc,created_at.desc&limit=50";
+  var res;
+  try { res = await fetch(url, { headers: { apikey: SUPABASE_KEY } }); }
+  catch (e) { throw new Error("Vérifiez votre connexion internet."); }
+  if (!res.ok) throw new Error("Erreur serveur (" + res.status + ").");
+  return res.json();
+}
+
+function renderCities() {
+  nav.textContent = "";
+  CITIES.forEach(function (c) {
+    var b = el("button", "chip", c.name);
+    b.setAttribute("aria-pressed", String(c.id === cityId));
+    b.onclick = function () {
+      cityId = c.id;
+      try { localStorage.setItem("myshop_city", String(c.id)); } catch (e) {}
+      renderCities();
+      load();
+    };
+    nav.appendChild(b);
+  });
+}
+
+function card(p) {
+  var c = el("article", "card" + (p.is_sponsored ? " sp" : ""));
+  var img = p.image_urls && p.image_urls[0];
+  if (typeof img === "string" && img.indexOf("https://") === 0) {
+    var im = el("img", "thumb"); im.src = img; im.alt = p.title; im.loading = "lazy";
+    c.appendChild(im);
+  } else {
+    c.appendChild(el("div", "thumb", "🛍️"));
+  }
+  var b = el("div", "body");
+  if (p.is_sponsored) b.appendChild(el("span", "badge", "Sponsorisé"));
+  b.appendChild(el("h3", "", p.title));
+  b.appendChild(el("p", "price", price(p.price_xaf)));
+  if (p.market_name) b.appendChild(el("p", "meta", p.market_name));
+  c.appendChild(b);
+  return c;
+}
+
+function show(list, notice) {
+  content.textContent = "";
+  if (notice) content.appendChild(el("div", "notice", notice));
+  if (!list.length) {
+    var e = el("div", "state");
+    e.appendChild(el("p", "", "Aucune annonce dans cette ville pour le moment."));
+    content.appendChild(e);
+    return;
+  }
+  [["À la une", true], ["Dernières annonces", false]].forEach(function (g) {
+    var items = list.filter(function (p) { return !!p.is_sponsored === g[1]; });
+    if (!items.length) return;
+    content.appendChild(el("h2", "", g[0]));
+    var box = el("div", "list");
+    items.forEach(function (p) { box.appendChild(card(p)); });
+    content.appendChild(box);
+  });
+}
+
+async function load() {
+  var t = ++token, id = cityId;
+  content.textContent = "";
+  var w = el("div", "list");
+  for (var i = 0; i < 4; i++) w.appendChild(el("div", "sk"));
+  content.appendChild(w);
+  try {
+    var list = await fetchProducts(id);
+    if (t !== token) return;
+    try { localStorage.setItem("myshop_cache_" + id, JSON.stringify(list)); } catch (e) {}
+    show(list);
+  } catch (err) {
+    if (t !== token) return;
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem("myshop_cache_" + id)); } catch (e) {}
+    if (cached) { show(cached, "Hors-ligne : dernières annonces enregistrées sur ton téléphone."); return; }
+    content.textContent = "";
+    var box = el("div", "state");
+    box.appendChild(el("p", "", err.message));
+    var r = el("button", "btn", "Réessayer");
+    r.onclick = load;
+    box.appendChild(r);
+    content.appendChild(box);
+  }
+}
+
+renderCities();
+load();
+</script>
+</body>
+</html>
